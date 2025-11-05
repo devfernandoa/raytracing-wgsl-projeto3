@@ -184,62 +184,84 @@ fn emmisive(color: vec3f, light: f32) -> material_behaviour
 {
   return material_behaviour(false, vec3f(0.0));
 }
+// ------------------------------------------------------------
+// ------------------------------------------------------------
+// trace() percorre todos os buffers
+fn trace(r: ray) -> vec3f {
+    var closest = RAY_TMAX;
+    var record = hit_record(0.0, vec3f(0.0), vec3f(0.0), vec4f(0.0), vec4f(0.0), false, false);
 
-fn trace(r: ray, rng_state: ptr<function, u32>) -> vec3f
-{
-  var maxbounces = i32(uniforms[2]);
-  var light = vec3f(0.0);
-  var color = vec3f(1.0);
-  var r_ = r;
-  
-  var backgroundcolor1 = int_to_rgb(i32(uniforms[11]));
-  var backgroundcolor2 = int_to_rgb(i32(uniforms[12]));
-  var behaviour = material_behaviour(true, vec3f(0.0));
+    let sphereCount = i32(uniforms[19]);
+    for (var i = 0; i < sphereCount; i = i + 1) {
+        var temp = record;
+        hit_sphere(spheresb[i].transform.xyz, spheresb[i].transform.w, r, &temp, closest);
+        if (temp.hit_anything && temp.t < closest) {
+            // obter cor/material da esfera e normalizar se estiver em 0..255
+            var col = spheresb[i].color.xyz;
+            if (col.x > 1.5 || col.y > 1.5 || col.z > 1.5) {
+                col = col / 255.0;
+            }
+            temp.object_color = vec4f(col, spheresb[i].color.w);
+            temp.object_material = spheresb[i].material;
+            closest = temp.t;
+            record = temp;
+        }
+    }
 
-  for (var j = 0; j < maxbounces; j = j + 1)
-  {
+    // (Opcional) adicionar interseções com quads/boxes/triangles/meshes aqui...
 
-  }
+    if (record.hit_anything) {
+        // iluminação simples: ambiente + difuso a partir da "sun direction" (uniforms[13..15])
+        let n = normalize(record.normal);
+        let light_dir = normalize(vec3f(uniforms[13], uniforms[14], uniforms[15]));
+        let diff = max(dot(n, light_dir), 0.0);
+        let base = record.object_color.xyz;
+        let ambient = 0.12;
+        let shaded = base * (ambient + (1.0 - ambient) * diff);
+        return clamp(shaded, vec3f(0.0), vec3f(1.0));
+    }
 
-  return light;
+    // fundo via função de ambiente (mantém gradiente + sol)
+    return envoriment_color(r.direction, vec3f(0.7, 0.8, 1.0), vec3f(1.0, 1.0, 1.0));
 }
 
+// ------------------------------------------------------------
+// Render
 @compute @workgroup_size(THREAD_COUNT, THREAD_COUNT, 1)
-fn render(@builtin(global_invocation_id) id : vec3u)
-{
-    var rez = uniforms[1];
-    var time = u32(uniforms[0]);
+fn render(@builtin(global_invocation_id) id: vec3u) {
+    let rez = uniforms[1];
+    let fragCoord = vec2f(f32(id.x), f32(id.y));
 
-    // init_rng (random number generator) we pass the pixel position, resolution and frame
-    var rng_state = init_rng(vec2(id.x, id.y), vec2(u32(rez)), time);
+    // normalize pixel coords [0,1] and flip Y so image isn't invertida
+    let nx = fragCoord.x / rez;
+    let ny = 1.0 - (fragCoord.y / rez);
 
-    // Get uv
-    var fragCoord = vec2f(f32(id.x), f32(id.y));
-    var uv = (fragCoord + sample_square(&rng_state)) / vec2(rez);
+    var r: ray;
+    r.origin = vec3f(0.0, 0.0, 1.0);
+    r.direction = normalize(vec3f(nx - 0.5, ny - 0.5, -1.0)); // Y flipped
 
-    // Camera
-    var lookfrom = vec3(uniforms[7], uniforms[8], uniforms[9]);
-    var lookat = vec3(uniforms[23], uniforms[24], uniforms[25]);
+    var color = vec3f(0.0, 0.0, 0.0);
+    let samples_per_pixel = max(1, i32(uniforms[4]));
+    for (var s = 0; s < samples_per_pixel; s = s + 1) {
+        color = color + trace(r);
+    }
+    color = color / f32(samples_per_pixel);
 
-    // Get camera
-    var cam = get_camera(lookfrom, lookat, vec3(0.0, 1.0, 0.0), uniforms[10], 1.0, uniforms[6], uniforms[5]);
-    var samples_per_pixel = i32(uniforms[4]);
+    // clamp then gamma-correct (simple gamma 2.0 using sqrt)
+    color = clamp(color, vec3f(0.0), vec3f(1.0));
+    let color_gamma = vec3f(sqrt(color.x), sqrt(color.y), sqrt(color.z));
 
-    var color = vec3(rng_next_float(&rng_state), rng_next_float(&rng_state), rng_next_float(&rng_state));
+    var color_out = vec4f(color_gamma, 1.0);
+    let map_fb = id.y * u32(rez) + id.x;
+    let should_accumulate = uniforms[3];
 
-    // Steps:
-    // 1. Loop for each sample per pixel
-    // 2. Get ray
-    // 3. Call trace function
-    // 4. Average the color
+    if (should_accumulate > 0.0) {
+        // blend prev and current (prev assumed stored in same gamma space)
+        let prev_rgb = rtfb[map_fb].xyz;
+        let blended = prev_rgb * 0.5 + color_out.xyz * 0.5;
+        color_out = vec4f(blended, color_out.w);
+    }
 
-    var color_out = vec4(linear_to_gamma(color), 1.0);
-    var map_fb = mapfb(id.xy, rez);
-    
-    // 5. Accumulate the color
-    var should_accumulate = uniforms[3];
-
-    // Set the color to the framebuffer
     rtfb[map_fb] = color_out;
     fb[map_fb] = color_out;
 }
