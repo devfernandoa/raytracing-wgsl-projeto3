@@ -181,7 +181,35 @@ fn check_ray_collision(r: ray, max: f32) -> hit_record
     }
   }
 
-  // TODO: check quads, boxes, triangles and meshes
+  // Check boxes
+  for (var i = 0; i < boxesCount; i = i + 1)
+  {
+    let b = boxesb[i];
+    var candidate = hit_record(RAY_TMAX, vec3f(0.0), vec3f(0.0), vec4f(0.0), vec4f(0.0), false, false);
+    
+    if (hit_box(r, b.center.xyz, b.radius.xyz, b.rotation.xyz, &candidate, max) && candidate.t < closest.t)
+    {
+      closest = candidate;
+      closest.object_color = b.color;
+      closest.object_material = b.material;
+    }
+  }
+
+  // Check quads
+  for (var i = 0; i < quadsCount; i = i + 1)
+  {
+    let q = quadsb[i];
+    var candidate = hit_record(RAY_TMAX, vec3f(0.0), vec3f(0.0), vec4f(0.0), vec4f(0.0), false, false);
+    
+    if (hit_quad(r, q.Q, q.u, q.v, &candidate, max) && candidate.t < closest.t)
+    {
+      closest = candidate;
+      closest.object_color = q.color;
+      closest.object_material = q.material;
+    }
+  }
+
+  // TODO: check triangles and meshes
 
   return closest;
 }

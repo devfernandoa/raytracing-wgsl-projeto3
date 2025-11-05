@@ -43,48 +43,69 @@ fn hit_sphere(center: vec3f, radius: f32, r: ray, record: ptr<function, hit_reco
   record.hit_anything = true;
 }
 
-fn hit_quad(r: ray, Q: vec4f, u: vec4f, v: vec4f, record: ptr<function, hit_record>, max: f32)
+fn hit_quad(r: ray, Q: vec4f, u: vec4f, v: vec4f, record: ptr<function, hit_record>, max: f32) -> bool
 {
-  var n = cross(u.xyz, v.xyz);
-  var normal = normalize(n);
-  var D = dot(normal, Q.xyz);
-  var w = n / dot(n.xyz, n.xyz);
-
-  var denom = dot(normal, r.direction);
-  if (abs(denom) < 0.0001)
-  {
-    record.hit_anything = false;
-    return;
-  }
-
-  var t = (D - dot(normal, r.origin)) / denom;
-  if (t < RAY_TMIN || t > max)
-  {
-    record.hit_anything = false;
-    return;
-  }
-
-  var intersection = ray_at(r, t);
-  var planar_hitpt_vector = intersection - Q.xyz;
-  var alpha = dot(w, cross(planar_hitpt_vector, v.xyz));
-  var beta = dot(w, cross(u.xyz, planar_hitpt_vector));
-
-  if (alpha < 0.0 || alpha > 1.0 || beta < 0.0 || beta > 1.0)
-  {
-    record.hit_anything = false;
-    return;
-  }
-
-  if (dot(normal, r.direction) > 0.0)
-  {
-    record.hit_anything = false;
-    return;
-  }
-
-  record.t = t;
-  record.p = intersection;
-  record.normal = normal;
-  record.hit_anything = true;
+    // Calculate the normal of the quad
+    var n = cross(u.xyz, v.xyz);
+    var normal = normalize(n);
+    
+    // Calculate the plane constant D
+    var D = dot(normal, Q.xyz);
+    
+    // Calculate denominator
+    var denom = dot(normal, r.direction);
+    
+    // Check if ray is parallel to the quad
+    if (abs(denom) < RAY_TMIN)
+    {
+        return false;
+    }
+    
+    // Calculate t (distance along ray)
+    var t = (D - dot(normal, r.origin)) / denom;
+    
+    // Check if intersection is within valid range
+    if (t < RAY_TMIN || t > max)
+    {
+        return false;
+    }
+    
+    // Calculate intersection point
+    var p = ray_at(r, t);
+    
+    // Calculate planar hitpoint coordinates
+    var planar_hitpt = p - Q.xyz;
+    
+    // Calculate w vector for bounds checking
+    var w = n / dot(n, n);
+    var alpha = dot(w, cross(planar_hitpt, v.xyz));
+    var beta = dot(w, cross(u.xyz, planar_hitpt));
+    
+    // Check if point is inside the quad bounds
+    if (alpha < 0.0 || alpha > 1.0 || beta < 0.0 || beta > 1.0)
+    {
+        return false;
+    }
+    
+    // Set hit record
+    record.t = t;
+    record.p = p;
+    record.hit_anything = true;
+    
+    // Determine front face
+    var front_face = dot(r.direction, normal) < 0.0;
+    record.frontface = front_face;
+    
+    if (front_face)
+    {
+        record.normal = normal;
+    }
+    else
+    {
+        record.normal = -normal;
+    }
+    
+    return true;
 }
 
 fn hit_triangle(r: ray, v0: vec3f, v1: vec3f, v2: vec3f, record: ptr<function, hit_record>, max: f32)
@@ -120,35 +141,101 @@ fn hit_triangle(r: ray, v0: vec3f, v1: vec3f, v2: vec3f, record: ptr<function, h
   record.hit_anything = true;
 }
 
-fn hit_box(r: ray, center: vec3f, rad: vec3f, record: ptr<function, hit_record>, t_max: f32)
+fn hit_box(r: ray, center: vec3f, rad: vec3f, rotation: vec3f, record: ptr<function, hit_record>, t_max: f32) -> bool
 {
-  var m = 1.0 / r.direction;
-  var n = m * (r.origin - center);
-  var k = abs(m) * rad;
-
-  var t1 = -n - k;
-  var t2 = -n + k;
-
-  var tN = max(max(t1.x, t1.y), t1.z);
-  var tF = min(min(t2.x, t2.y), t2.z);
-
-  if (tN > tF || tF < 0.0)
-  {
-    record.hit_anything = false;
-    return;
-  }
-
-  var t = tN;
-  if (t < RAY_TMIN || t > t_max)
-  {
-    record.hit_anything = false;
-    return;
-  }
-
-  record.t = t;
-  record.p = ray_at(r, t);
-  record.normal = -sign(r.direction) * step(t1.yzx, t1.xyz) * step(t1.zxy, t1.xyz);
-  record.hit_anything = true;
-
-  return;
+    // Convert Euler angles to quaternion
+    var quat = quaternion_from_euler(rotation);
+    var quat_inv = q_inverse(quat);
+    
+    // Transform ray to box's local space
+    var local_origin = rotate_vector(r.origin - center, quat_inv);
+    var local_direction = rotate_vector(r.direction, quat_inv);
+    
+    // Create local ray
+    var local_ray = ray(local_origin, local_direction);
+    
+    // Calculate intersection using AABB method
+    var m = 1.0 / local_ray.direction;
+    var n = m * local_ray.origin;
+    var k = abs(m) * rad;
+    
+    var t1 = -n - k;
+    var t2 = -n + k;
+    
+    var tN = max(max(t1.x, t1.y), t1.z);
+    var tF = min(min(t2.x, t2.y), t2.z);
+    
+    // Check if there's an intersection
+    if (tN > tF || tF < RAY_TMIN)
+    {
+        return false;
+    }
+    
+    // Choose the closest intersection
+    var t = tN;
+    if (tN < RAY_TMIN)
+    {
+        t = tF;
+    }
+    
+    // Check if intersection is within valid range
+    if (t < RAY_TMIN || t > t_max)
+    {
+        return false;
+    }
+    
+    // Calculate intersection point in local space
+    var local_p = ray_at(local_ray, t);
+    
+    // Calculate normal in local space
+    var local_normal = vec3f(0.0);
+    var eps = 0.0001;
+    
+    if (abs(local_p.x - rad.x) < eps)
+    {
+        local_normal = vec3f(1.0, 0.0, 0.0);
+    }
+    else if (abs(local_p.x + rad.x) < eps)
+    {
+        local_normal = vec3f(-1.0, 0.0, 0.0);
+    }
+    else if (abs(local_p.y - rad.y) < eps)
+    {
+        local_normal = vec3f(0.0, 1.0, 0.0);
+    }
+    else if (abs(local_p.y + rad.y) < eps)
+    {
+        local_normal = vec3f(0.0, -1.0, 0.0);
+    }
+    else if (abs(local_p.z - rad.z) < eps)
+    {
+        local_normal = vec3f(0.0, 0.0, 1.0);
+    }
+    else
+    {
+        local_normal = vec3f(0.0, 0.0, -1.0);
+    }
+    
+    // Transform normal back to world space
+    var world_normal = normalize(rotate_vector(local_normal, quat));
+    
+    // Set hit record
+    record.t = t;
+    record.p = ray_at(r, t);
+    record.hit_anything = true;
+    
+    // Determine front face
+    var front_face = dot(r.direction, world_normal) < 0.0;
+    record.frontface = front_face;
+    
+    if (front_face)
+    {
+        record.normal = world_normal;
+    }
+    else
+    {
+        record.normal = -world_normal;
+    }
+    
+    return true;
 }
