@@ -209,7 +209,47 @@ fn check_ray_collision(r: ray, max: f32) -> hit_record
     }
   }
 
-  // TODO: check triangles and meshes
+  // Check meshes (collections of triangles)
+  for (var i = 0; i < meshCount; i = i + 1)
+  {
+    let m = meshb[i];
+    let start = i32(m.start);
+    let end = i32(m.end);
+    
+    // Check all triangles in the mesh
+    for (var j = start; j < end; j = j + 1)
+    {
+      let tri = trianglesb[j];
+      var candidate = hit_record(RAY_TMAX, vec3f(0.0), vec3f(0.0), vec4f(0.0), vec4f(0.0), false, false);
+      
+      // Transform triangle vertices: scale, rotate, then translate
+      var v0 = tri.v0.xyz * m.scale.xyz;
+      var v1 = tri.v1.xyz * m.scale.xyz;
+      var v2 = tri.v2.xyz * m.scale.xyz;
+      
+      // Apply rotation if needed
+      if (length(m.rotation.xyz) > 0.0001) {
+        var quat = quaternion_from_euler(m.rotation.xyz);
+        v0 = rotate_vector(v0, quat);
+        v1 = rotate_vector(v1, quat);
+        v2 = rotate_vector(v2, quat);
+      }
+      
+      // Apply translation
+      v0 = v0 + m.transform.xyz;
+      v1 = v1 + m.transform.xyz;
+      v2 = v2 + m.transform.xyz;
+      
+      hit_triangle(r, v0, v1, v2, &candidate, max);
+      
+      if (candidate.hit_anything && candidate.t < closest.t)
+      {
+        closest = candidate;
+        closest.object_color = m.color;
+        closest.object_material = m.material;
+      }
+    }
+  }
 
   return closest;
 }
@@ -356,7 +396,7 @@ fn render(@builtin(global_invocation_id) id : vec3u)
 
   color = color / f32(samples_per_pixel);
 
-  var color_out = vec4(linear_to_gamma(color), 1.0);
+  var color_out = vec4(color, 1.0);
   var map_fb = mapfb(id.xy, rez);
 
   // 5. Accumulate the color
@@ -364,5 +404,5 @@ fn render(@builtin(global_invocation_id) id : vec3u)
 
   // accumulate into the raytraced buffer and update the display buffer
   rtfb[map_fb] = rtfb[map_fb] * should_accumulate + color_out;
-  fb[map_fb] = rtfb[map_fb] / rtfb[map_fb].w;
+  fb[map_fb] = vec4(linear_to_gamma(rtfb[map_fb].xyz / rtfb[map_fb].w), 1.0);
 }

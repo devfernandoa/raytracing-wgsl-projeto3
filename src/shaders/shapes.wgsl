@@ -219,9 +219,13 @@ fn hit_box(r: ray, center: vec3f, rad: vec3f, rotation: vec3f, record: ptr<funct
     // Transform normal back to world space
     var world_normal = normalize(rotate_vector(local_normal, quat));
     
+    // Calculate intersection point in world space
+    // Transform local intersection point back to world space
+    var world_p = rotate_vector(local_p, quat) + center;
+    
     // Set hit record
     record.t = t;
-    record.p = ray_at(r, t);
+    record.p = world_p;
     record.hit_anything = true;
     
     // Determine front face
