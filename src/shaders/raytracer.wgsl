@@ -186,8 +186,9 @@ fn check_ray_collision(r: ray, max: f32) -> hit_record
   {
     var b = boxesb[bi];
     var tempb = hit_record(RAY_TMAX, vec3f(0.0), vec3f(0.0), vec4f(0.0), vec4f(0.0), false, false);
-    hit_box(r, b.center.xyz, b.radius.xyz, &tempb, max);
-    if (tempb.hit_anything && tempb.t < closest.t)
+    var rot = -b.rotation.xyz;
+    rot.x *= 2.5;
+    if (hit_box(r, b.center.xyz, b.radius.xyz, rot, &tempb, max) && tempb.t < closest.t)
     {
       tempb.frontface = dot(r.direction, tempb.normal) < 0.0;
       closest.t = tempb.t;
@@ -234,7 +235,8 @@ fn check_ray_collision(r: ray, max: f32) -> hit_record
       
       // Apply rotation if needed
       if (length(m.rotation.xyz) > 0.0001) {
-        var quat = quaternion_from_euler(m.rotation.xyz);
+        // Inverte direção da rotação aplicando negativo (pedido do usuário)
+        var quat = quaternion_from_euler(-m.rotation.xyz);
         v0 = rotate_vector(v0, quat);
         v1 = rotate_vector(v1, quat);
         v2 = rotate_vector(v2, quat);

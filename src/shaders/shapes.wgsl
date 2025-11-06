@@ -141,35 +141,86 @@ fn hit_triangle(r: ray, v0: vec3f, v1: vec3f, v2: vec3f, record: ptr<function, h
   record.hit_anything = true;
 }
 
-fn hit_box(r: ray, center: vec3f, rad: vec3f, record: ptr<function, hit_record>, t_max: f32)
+fn hit_box(r: ray, center: vec3f, rad: vec3f, rotation: vec3f, record: ptr<function, hit_record>, t_max: f32) -> bool
 {
-  var m = 1.0 / r.direction;
-  var n = m * (r.origin - center);
-  var k = abs(m) * rad;
+  // If no significant rotation, use simple AABB
+  if (length(rotation) < 0.01) {
+    var m = 1.0 / r.direction;
+    var n = m * (r.origin - center);
+    var k = abs(m) * rad;
 
+    var t1 = -n - k;
+    var t2 = -n + k;
+
+    var tN = max(max(t1.x, t1.y), t1.z);
+    var tF = min(min(t2.x, t2.y), t2.z);
+
+    if (tN > tF || tF < 0.0)
+    {
+      record.hit_anything = false;
+      return false;
+    }
+
+    var t = tN;
+    if (t < RAY_TMIN || t > t_max)
+    {
+      record.hit_anything = false;
+      return false;
+    }
+
+    record.t = t;
+    record.p = ray_at(r, t);
+    record.normal = -sign(r.direction) * step(t1.yzx, t1.xyz) * step(t1.zxy, t1.xyz);
+    record.hit_anything = true;
+    return true;
+  }
+
+  // For rotated boxes, transform ray to local space
+  var quat = quaternion_from_euler(rotation);
+  var quat_inv = q_inverse(quat);
+  
+  // Transform ray to box's local space
+  var local_origin = rotate_vector(r.origin - center, quat_inv);
+  var local_direction = normalize(rotate_vector(r.direction, quat_inv));
+  
+  // Perform AABB intersection in local space with safety checks
+  var safe_direction = local_direction;
+  if (abs(safe_direction.x) < 0.0001) { safe_direction.x = 0.0001; }
+  if (abs(safe_direction.y) < 0.0001) { safe_direction.y = 0.0001; }
+  if (abs(safe_direction.z) < 0.0001) { safe_direction.z = 0.0001; }
+  
+  var m = 1.0 / safe_direction;
+  var n = m * local_origin;
+  var k = abs(m) * rad;
+  
   var t1 = -n - k;
   var t2 = -n + k;
-
+  
   var tN = max(max(t1.x, t1.y), t1.z);
   var tF = min(min(t2.x, t2.y), t2.z);
-
+  
   if (tN > tF || tF < 0.0)
   {
     record.hit_anything = false;
-    return;
+    return false;
   }
-
+  
   var t = tN;
   if (t < RAY_TMIN || t > t_max)
   {
     record.hit_anything = false;
-    return;
+    return false;
   }
-
+  
+  // Calculate intersection point and normal in local space
+  var local_p = local_origin + t * local_direction;
+  var local_normal = -sign(safe_direction) * step(t1.yzx, t1.xyz) * step(t1.zxy, t1.xyz);
+  
+  // Transform back to world space
   record.t = t;
-  record.p = ray_at(r, t);
-  record.normal = -sign(r.direction) * step(t1.yzx, t1.xyz) * step(t1.zxy, t1.xyz);
+  record.p = rotate_vector(local_p, quat) + center;
+  record.normal = normalize(rotate_vector(local_normal, quat));
   record.hit_anything = true;
-
-  return;
+  
+  return true;
 }
