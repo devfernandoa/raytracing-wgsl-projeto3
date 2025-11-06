@@ -106,27 +106,6 @@ fn ray_at(r: ray, t: f32) -> vec3f
   return r.origin + t * r.direction;
 }
 
-fn schlick(cosine: f32, ref_idx: f32) -> f32 {
-  var r0 = (1.0 - ref_idx) / (1.0 + ref_idx);
-  r0 = r0 * r0;
-  return r0 + (1.0 - r0) * pow((1.0 - cosine), 5.0);
-}
-
-fn reflect(v: vec3f, n: vec3f) -> vec3f {
-  return v - 2.0 * dot(v, n) * n;
-}
-
-fn refract(uv: vec3f, n: vec3f, eta: f32) -> vec3f {
-  var cos_theta = min(dot(-uv, n), 1.0);
-  var r_out_perp = eta * (uv + cos_theta * n);
-  var k = 1.0 - dot(r_out_perp, r_out_perp);
-  var r_out_parallel = vec3f(0.0);
-  if (k > 0.0) {
-    r_out_parallel = -sqrt(k) * n;
-  }
-  return r_out_perp + r_out_parallel;
-}
-
 fn get_ray(cam: camera, uv: vec2f, rng_state: ptr<function, u32>) -> ray
 {
   var rd = cam.lens_radius * rng_next_vec3_in_unit_disk(rng_state);
@@ -186,37 +165,19 @@ fn check_ray_collision(r: ray, max: f32) -> hit_record
   // Check spheres
   for (var i = 0; i < spheresCount; i = i + 1)
   {
-    var s = spheresb[i];
-    var temp = hit_record(RAY_TMAX, vec3f(0.0), vec3f(0.0), vec4f(0.0), vec4f(0.0), false, false);
-    hit_sphere(s.transform.xyz, s.transform.w, r, &temp, max);
-    if (temp.hit_anything && temp.t < closest.t)
+    let s = spheresb[i];
+    let center = s.transform.xyz;
+    let radius = s.transform.w;
+
+    var candidate = hit_record(RAY_TMAX, vec3f(0.0), vec3f(0.0), vec4f(0.0), vec4f(0.0), false, false);
+    hit_sphere(center, radius, r, &candidate, max);
+
+    if (candidate.hit_anything && candidate.t < closest.t)
     {
-      closest.t = temp.t;
-      closest.p = temp.p;
-      closest.normal = temp.normal;
+      closest = candidate;
+      // copy color and material from the sphere buffer
       closest.object_color = s.color;
       closest.object_material = s.material;
-      closest.frontface = temp.frontface;
-      closest.hit_anything = true;
-    }
-  }
-
-  // Check quads
-  for (var qi = 0; qi < quadsCount; qi = qi + 1)
-  {
-    var q = quadsb[qi];
-    var tempq = hit_record(RAY_TMAX, vec3f(0.0), vec3f(0.0), vec4f(0.0), vec4f(0.0), false, false);
-    hit_quad(r, q.Q, q.u, q.v, &tempq, max);
-    if (tempq.hit_anything && tempq.t < closest.t)
-    {
-      tempq.frontface = dot(r.direction, tempq.normal) < 0.0;
-      closest.t = tempq.t;
-      closest.p = tempq.p;
-      closest.normal = tempq.normal;
-      closest.object_color = q.color;
-      closest.object_material = q.material;
-      closest.frontface = tempq.frontface;
-      closest.hit_anything = true;
     }
   }
 
@@ -239,37 +200,59 @@ fn check_ray_collision(r: ray, max: f32) -> hit_record
     }
   }
 
-  for (var ti = 0; ti < trianglesCount; ti = ti + 1)
+  // Check quads
+  for (var i = 0; i < quadsCount; i = i + 1)
   {
-    var t = trianglesb[ti];
-    var tempt = hit_record(RAY_TMAX, vec3f(0.0), vec3f(0.0), vec4f(0.0), vec4f(0.0), false, false);
-    hit_triangle(r, t.v0.xyz, t.v1.xyz, t.v2.xyz, &tempt, max);
-    if (tempt.hit_anything && tempt.t < closest.t)
+    let q = quadsb[i];
+    var candidate = hit_record(RAY_TMAX, vec3f(0.0), vec3f(0.0), vec4f(0.0), vec4f(0.0), false, false);
+    
+    if (hit_quad(r, q.Q, q.u, q.v, &candidate, max) && candidate.t < closest.t)
     {
-      tempt.frontface = dot(r.direction, tempt.normal) < 0.0;
+      closest = candidate;
+      closest.object_color = q.color;
+      closest.object_material = q.material;
+    }
+  }
 
-      var triColor = vec4f(1.0, 1.0, 1.0, 1.0);
-      var triMaterial = vec4f(0.0, 0.0, 0.0, 0.0);
-      for (var mi = 0; mi < meshCount; mi = mi + 1)
-      {
-        var m = meshb[mi];
-        var starti = i32(m.start);
-        var endi = i32(m.end);
-        if (ti >= starti && ti < endi)
-        {
-          triColor = m.color;
-          triMaterial = m.material;
-          break;
-        }
+  // Check meshes (collections of triangles)
+  for (var i = 0; i < meshCount; i = i + 1)
+  {
+    let m = meshb[i];
+    let start = i32(m.start);
+    let end = i32(m.end);
+    
+    // Check all triangles in the mesh
+    for (var j = start; j < end; j = j + 1)
+    {
+      let tri = trianglesb[j];
+      var candidate = hit_record(RAY_TMAX, vec3f(0.0), vec3f(0.0), vec4f(0.0), vec4f(0.0), false, false);
+      
+      // Transform triangle vertices: scale, rotate, then translate
+      var v0 = tri.v0.xyz * m.scale.xyz;
+      var v1 = tri.v1.xyz * m.scale.xyz;
+      var v2 = tri.v2.xyz * m.scale.xyz;
+      
+      // Apply rotation if needed
+      if (length(m.rotation.xyz) > 0.0001) {
+        var quat = quaternion_from_euler(m.rotation.xyz);
+        v0 = rotate_vector(v0, quat);
+        v1 = rotate_vector(v1, quat);
+        v2 = rotate_vector(v2, quat);
       }
-
-      closest.t = tempt.t;
-      closest.p = tempt.p;
-      closest.normal = tempt.normal;
-      closest.object_color = triColor;
-      closest.object_material = triMaterial;
-      closest.frontface = tempt.frontface;
-      closest.hit_anything = true;
+      
+      // Apply translation
+      v0 = v0 + m.transform.xyz;
+      v1 = v1 + m.transform.xyz;
+      v2 = v2 + m.transform.xyz;
+      
+      hit_triangle(r, v0, v1, v2, &candidate, max);
+      
+      if (candidate.hit_anything && candidate.t < closest.t)
+      {
+        closest = candidate;
+        closest.object_color = m.color;
+        closest.object_material = m.material;
+      }
     }
   }
 
@@ -278,96 +261,114 @@ fn check_ray_collision(r: ray, max: f32) -> hit_record
 
 fn lambertian(normal : vec3f, absorption: f32, random_sphere: vec3f, rng_state: ptr<function, u32>) -> material_behaviour
 {
-  var rnd = random_sphere;
-  var scatter = normal + rnd;
-  if (length(scatter) < 1e-6)
-  {
-    scatter = normal;
+  var scatter_direction = normal + rng_next_vec3_in_unit_sphere(rng_state);
+  
+  if (length(scatter_direction) < 0.0001) {
+    scatter_direction = normal;
   }
-  return material_behaviour(true, normalize(scatter));
+  
+  return material_behaviour(true, normalize(scatter_direction));
 }
 
 fn metal(normal : vec3f, direction: vec3f, fuzz: f32, random_sphere: vec3f) -> material_behaviour
 {
-  var dir = normalize(direction);
-  var reflected = dir - 2.0 * dot(dir, normal) * normal;
-  var scattered = reflected + fuzz * random_sphere;
-  return material_behaviour(true, scattered);
+  var reflected = reflect(normalize(direction), normal);
+  var fuzzed = reflected + fuzz * random_sphere;
+  return material_behaviour(true, fuzzed);
 }
 
 fn dielectric(normal : vec3f, r_direction: vec3f, refraction_index: f32, frontface: bool, random_sphere: vec3f, fuzz: f32, rng_state: ptr<function, u32>) -> material_behaviour
-{
+{  
+  var ri = select(refraction_index, 1.0 / refraction_index, frontface);
   var unit_direction = normalize(r_direction);
-  var etai_over_etat = 1.0 / refraction_index;
-  if (!frontface) {
-    etai_over_etat = refraction_index;
-  }
-
   var cos_theta = min(dot(-unit_direction, normal), 1.0);
-  var sin_theta = sqrt(max(0.0, 1.0 - cos_theta * cos_theta));
-
-  var cannot_refract = etai_over_etat * sin_theta > 1.0;
-  var reflect_prob = schlick(cos_theta, etai_over_etat);
-
-  var scatter_dir = vec3f(0.0);
-  if (cannot_refract || rng_next_float(rng_state) < reflect_prob) {
-    scatter_dir = reflect(unit_direction, normal);
-    scatter_dir = normalize(scatter_dir + fuzz * random_sphere);
+  var sin_theta = sqrt(1.0 - cos_theta * cos_theta);
+  
+  var cannot_refract = ri * sin_theta > 1.0;
+  
+  var r0 = (1.0 - ri) / (1.0 + ri);
+  var r0_squared = r0 * r0;
+  var reflect_prob = r0_squared + (1.0 - r0_squared) * pow(1.0 - cos_theta, 5.0);
+  
+  var direction: vec3f;
+  if (cannot_refract || reflect_prob > rng_next_float(rng_state)) {
+    direction = reflect(unit_direction, normal);
   } else {
-    scatter_dir = refract(unit_direction, normal, etai_over_etat);
+    var r_perp = ri * (unit_direction + cos_theta * normal);
+    var r_parallel = -sqrt(abs(1.0 - dot(r_perp, r_perp))) * normal;
+    direction = r_perp + r_parallel;
   }
-
-  return material_behaviour(true, normalize(scatter_dir));
+  
+  return material_behaviour(true, normalize(direction));
 }
+
 fn emmisive(color: vec3f, light: f32) -> material_behaviour
 {
-  return material_behaviour(false, vec3f(0.0));
+  return material_behaviour(false, color * light);
 }
 
 fn trace(r: ray, rng_state: ptr<function, u32>) -> vec3f
 {
   var maxbounces = i32(uniforms[2]);
-  var light = vec3f(0.0);
-  var attenuation = vec3f(1.0);
-  var r_ = r;
-
+  var accumulated_color = vec3f(1.0);
+  var light_color = vec3f(0.0);
+  var current_ray = r;
+  
   var backgroundcolor1 = int_to_rgb(i32(uniforms[11]));
   var backgroundcolor2 = int_to_rgb(i32(uniforms[12]));
 
-  for (var j = 0; j < maxbounces; j = j + 1)
+  for (var bounce = 0; bounce < maxbounces; bounce = bounce + 1)
   {
-    var rec = check_ray_collision(r_, RAY_TMAX);
-
-    if (!rec.hit_anything)
-    {
-      light = light + attenuation * envoriment_color(r_.direction, backgroundcolor1, backgroundcolor2);
+    var record = check_ray_collision(current_ray, RAY_TMAX);
+    
+    if (!record.hit_anything) {
+      light_color += accumulated_color * envoriment_color(current_ray.direction, backgroundcolor1, backgroundcolor2);
+      break;
+    }
+    
+    var smoothness = record.object_material.x;
+    var absorption = record.object_material.y;
+    var specular = record.object_material.z;
+    var light = record.object_material.w;
+    
+    if (light > 0.0) {
+      var emissive_response = emmisive(record.object_color.xyz, light);
+      light_color += accumulated_color * emissive_response.direction;
+      break;
+    }
+    
+    var material_response: material_behaviour;
+    var specular_prob = rng_next_float(rng_state);
+    
+    if (smoothness < 0.0) {
+      material_response = dielectric(record.normal, current_ray.direction, specular, record.frontface, rng_next_vec3_in_unit_sphere(rng_state), absorption, rng_state);
+      record.p = record.p - 0.01 * record.normal;
+    } else {
+      var newBehaviour = material_behaviour(true, vec3f(0.0));
+      var material_response_metal = metal(record.normal, current_ray.direction, absorption, rng_next_vec3_in_unit_sphere(rng_state));
+      var material_response_lambertian = lambertian(record.normal, absorption, rng_next_vec3_in_unit_sphere(rng_state), rng_state);
+      newBehaviour.direction = mix(material_response_lambertian.direction, material_response_metal.direction, smoothness);
+      if (specular_prob < specular) {
+        material_response = newBehaviour;
+      } else {
+        material_response = material_response_lambertian;
+      }
+      accumulated_color *= record.object_color.xyz;
+    }
+    
+    if (material_response.scatter) {
+      current_ray = ray(record.p, normalize(material_response.direction));
+      if (smoothness <= 0.0) {
+        accumulated_color *= record.object_color.xyz;
+      }
+    } else {
       break;
     }
 
-    if (rec.object_material.w > 0.0)
-    {
-      var emission = rec.object_color.xyz * rec.object_material.w;
-      light = light + attenuation * emission;
-      break;
-    }
-
-    var albedo = rec.object_color.xyz;
-
-    var random_sphere = rng_next_vec3_in_unit_sphere(rng_state);
-    var behaviour = material_behaviour(true, vec3f(0.0));
-    var fuzz = rec.object_material.y;
-    var specular = rec.object_material.z;
-    var metal_behaviour = metal(rec.normal, r_.direction, fuzz, random_sphere);
-    var lambertian_behaviour = lambertian(rec.normal, rec.object_material.x, random_sphere, rng_state);
-
-    behaviour.direction = mix(lambertian_behaviour.direction, metal_behaviour.direction,
-      rec.object_material.x * f32(specular > rng_next_float(rng_state)));
-    attenuation = attenuation * albedo;
-
-    r_ = ray(rec.p + rec.normal * RAY_TMIN, normalize(behaviour.direction));
+    current_ray.origin += 0.0001 * record.normal;
   }
 
-  return light;
+  return light_color;
 }
 
 @compute @workgroup_size(THREAD_COUNT, THREAD_COUNT, 1)
@@ -376,38 +377,37 @@ fn render(@builtin(global_invocation_id) id : vec3u)
     var rez = uniforms[1];
     var time = u32(uniforms[0]);
 
+    // init_rng (random number generator) we pass the pixel position, resolution and frame
     var rng_state = init_rng(vec2(id.x, id.y), vec2(u32(rez)), time);
 
-  var fragCoord = vec2f(f32(id.x), f32(id.y));
-    
-  var lookfrom = vec3(uniforms[7], uniforms[8], uniforms[9]);
+    // Get uv
+    var fragCoord = vec2f(f32(id.x), f32(id.y));
+    var uv = (fragCoord + sample_square(&rng_state)) / vec2(rez);
+
+    // Camera
+    var lookfrom = vec3(uniforms[7], uniforms[8], uniforms[9]);
     var lookat = vec3(uniforms[23], uniforms[24], uniforms[25]);
 
+    // Get camera
     var cam = get_camera(lookfrom, lookat, vec3(0.0, 1.0, 0.0), uniforms[10], 1.0, uniforms[6], uniforms[5]);
     var samples_per_pixel = i32(uniforms[4]);
-    var color_accum = vec3f(0.0);
-    for (var s = 0; s < samples_per_pixel; s = s + 1)
-    {
-      var uv = (fragCoord + sample_square(&rng_state)) / vec2(rez);
-      var r = get_ray(cam, uv, &rng_state);
-      var col = trace(r, &rng_state);
-      color_accum = color_accum + col;
-    }
+  var color = vec3f(0.0);
+  for (var i = 0; i < samples_per_pixel; i = i + 1) {
+    let jitter = sample_square(&rng_state);
+    let uv_sample = (fragCoord + jitter) / vec2(rez);
+    let ray = get_ray(cam, uv_sample, &rng_state);
+    color = color + trace(ray, &rng_state);
+  }
 
-    var color = color_accum / f32(samples_per_pixel);
-    var color_out = vec4(color, 1.0);
-    var map_fb = mapfb(id.xy, rez);
-    
-    // 5. Accumulate the color across frames if requested
-    var should_accumulate = uniforms[3];
-    if (should_accumulate > 0.5)
-    {
-      rtfb[map_fb] += color_out;
-      fb[map_fb] = vec4(linear_to_gamma(rtfb[map_fb].xyz / rtfb[map_fb].w), 1.0);
-    }
-    else
-    {
-      rtfb[map_fb] = color_out;
-      fb[map_fb] = vec4(linear_to_gamma(color_out.xyz), 1.0);
-    }
+  color = color / f32(samples_per_pixel);
+
+  var color_out = vec4(color, 1.0);
+  var map_fb = mapfb(id.xy, rez);
+
+  // 5. Accumulate the color
+  var should_accumulate = uniforms[3];
+
+  // accumulate into the raytraced buffer and update the display buffer
+  rtfb[map_fb] = rtfb[map_fb] * should_accumulate + color_out;
+  fb[map_fb] = vec4(linear_to_gamma(rtfb[map_fb].xyz / rtfb[map_fb].w), 1.0);
 }
