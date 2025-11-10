@@ -3,7 +3,11 @@ import { Sphere, Triangle } from './objects.js';
 async function getGPU()
 {
     var adapter = await navigator.gpu.requestAdapter();
-    var gpu = await adapter.requestDevice();
+    var gpu = await adapter.requestDevice({
+        requiredLimits: {
+            maxStorageBuffersPerShaderStage: 10
+        }
+    });
 
     return {adapter, gpu};
 }

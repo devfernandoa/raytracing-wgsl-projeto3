@@ -1,4 +1,4 @@
-import { Sphere, Quad, Box, Mesh } from './objects.js';
+import { Sphere, Quad, Box, Mesh, Cylinder } from './objects.js';
 import { loadMesh, getObjBoundingBox, getSpheresRandom } from './util.js';
 
 const groundDefault = new Sphere([0, -1001, 0], [0.7, 0.7, 0.7], 1000, [0.9, 0.0, 0.6, 0.0]);
@@ -24,6 +24,7 @@ async function Spheres(numSpheres = 4)
         spheres, 
         quads: [], 
         boxes: [], 
+        cylinders: [],
         triangles: [], 
         meshes: [], 
         backgroundColor1: [0.0, 0.5, 1.0], 
@@ -44,6 +45,7 @@ async function Night()
         spheres,
         quads,
         boxes,
+        cylinders: [],
         triangles,
         meshes,
         backgroundColor1: [0.0, 0.0, 0.0],
@@ -68,6 +70,7 @@ async function Basic()
         quads: [], 
         boxes: [], 
         triangles: [], 
+        cylinders: [],
         meshes: [], 
         backgroundColor1: [0.0, 0.5, 1.0], 
         backgroundColor2: [1.0, 1.0, 1.0],
@@ -99,6 +102,7 @@ async function Metal()
 		spheres : spheres,
 		quads : quads,
 		boxes : boxes,
+		cylinders : [],
 		triangles: [],
 		meshes: [],
 		backgroundColor1 : [0, 0.5, 1],
@@ -131,6 +135,7 @@ async function Fuzz()
 		quads : quads,
 		boxes : boxes,
 		triangles: [],
+        cylinders: [],
 		meshes: [],
 		backgroundColor1 : [0, 0.3803921568627451, 0.7607843137254902],
 		backgroundColor2 : [1, 1, 1],
@@ -163,6 +168,7 @@ async function Specular()
 		quads : quads,
 		boxes : boxes,
 		triangles: [],
+        cylinders: [],
 		meshes: [],
 		backgroundColor1 : [0, 0, 0],
 		backgroundColor2 : [0.34509803921568627, 0.6039215686274509, 0.9921568627450981],
@@ -187,6 +193,7 @@ async function Emissive()
         quads: [], 
         boxes: [], 
         triangles: [], 
+        cylinders: [],
         meshes: [], 
         backgroundColor1: [0.0, 0.0, 0.0], 
         backgroundColor2: [0.0, 0.0, 0.0],
@@ -212,6 +219,7 @@ async function Dielectric()
         quads: [], 
         boxes: [], 
         triangles: [], 
+        cylinders: [],
         meshes: [], 
         backgroundColor1: [0.0, 0.5, 1.0], 
         backgroundColor2: [1.0, 1.0, 1.0],
@@ -243,6 +251,7 @@ async function Cubes()
 		quads : quads,
 		boxes : boxes,
 		triangles: [],
+        cylinders: [],
 		meshes: [],
 		backgroundColor1 : [0, 0.5, 1],
 		backgroundColor2 : [1, 1, 1],
@@ -287,6 +296,7 @@ async function Cornell()
 		quads : quads,
 		boxes : boxes,
 		triangles: [],
+        cylinders: [],
 		meshes: [],
 		backgroundColor1 : [0, 0, 0],
 		backgroundColor2 : [0, 0, 0],
@@ -330,6 +340,7 @@ async function Mirror()
 		quads : quads,
 		boxes : boxes,
 		triangles: [],
+        cylinders: [],
 		meshes: [],
 		backgroundColor1 : [0, 0, 0],
 		backgroundColor2 : [0, 0, 0],
@@ -372,6 +383,7 @@ async function Infinite()
 		quads : quads,
 		boxes : boxes,
 		triangles: [],
+        cylinders: [],
 		meshes: [],
 		backgroundColor1 : [0, 0, 0],
 		backgroundColor2 : [0, 0, 0],
@@ -400,6 +412,7 @@ async function Bunny()
         quads: [], 
         boxes: [], 
         triangles, 
+        cylinders: [],
         meshes, 
         backgroundColor1: [0.0, 0.5, 1.0], 
         backgroundColor2: [1.0, 1.0, 1.0], 
@@ -423,6 +436,7 @@ async function Suzzanne()
         quads: [], 
         boxes: [], 
         triangles, 
+        cylinders: [],
         meshes, 
         backgroundColor1: [0.0, 0.5, 1.0], 
         backgroundColor2: [1.0, 1.0, 1.0], 
@@ -462,6 +476,7 @@ async function Rotation()
 		quads : quads,
 		boxes : boxes,
 		triangles: triangles,
+        cylinders: [],
 		meshes: meshes,
 		backgroundColor1 : [1, 1, 1],
 		backgroundColor2 : [0.06274509803921569, 0.0784313725490196, 0.19607843137254902],
@@ -494,6 +509,7 @@ async function Everything()
         spheres: spheres, 
         quads: [], 
         boxes: boxes, 
+        cylinders: [],
         triangles: triangles, 
         meshes: meshes,
         backgroundColor1: [0.0, 0.5, 1.0], 
@@ -503,6 +519,39 @@ async function Everything()
         sunIntensity: 1.0,
         samplesPerPixel: 1.0,
         maxBounces: 10.0
+    };
+}
+
+async function Cylinders() 
+{
+    let spheres = [
+        new Sphere([0, -1001, 0], [0.5, 0.5, 0.5], 1000, [0.9, 0, 0.6, 0]), 
+    ];
+
+    let cylinders = [
+        new Cylinder([0, 0, -3], [1, 0.3, 0.3], [0, 0, 0], 0.5, 1.5, [0, 0, 0, 0]),
+        new Cylinder([-1.5, -0.25, -2.5], [0.3, 1, 0.3], [0, 0, 0.5], 0.3, 1.0, [1, 0, 1, 0]),
+        new Cylinder([1.5, 0, -3.5], [0.3, 0.3, 1], [0.3, 0.7, 0], 0.4, 2.0, [1, 0.1, 0.5, 0]),
+        new Cylinder([0, 0.75, -2], [1, 1, 0.3], [1.57, 0, 0], 0.25, 1.2, [-1, 0, 0.9, 0]),
+    ];
+
+    let quads = [];
+    let boxes = [];
+
+    return {
+        spheres : spheres,
+        quads : quads,
+        boxes : boxes,
+        cylinders : cylinders,
+        triangles: [],
+        meshes: [],
+        backgroundColor1 : [0.5, 0.7, 1.0],
+        backgroundColor2 : [1, 1, 1],
+        focusDistance: 5,
+        focusAngle: 0.1,
+        sunIntensity: 1,
+        samplesPerPixel: 1,
+        maxBounces: 10
     };
 }
 

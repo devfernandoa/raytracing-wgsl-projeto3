@@ -11,23 +11,26 @@ const FRAC_2_PI = 1.5707964f;
 @group(0) @binding(1)
   var<storage, read_write> rtfb : array<vec4f>;
 
-@group(1) @binding(0)
+@group(0) @binding(2)
   var<storage, read_write> uniforms : array<f32>;
 
-@group(2) @binding(0)
+@group(1) @binding(0)
   var<storage, read_write> spheresb : array<sphere>;
 
-@group(2) @binding(1)
+@group(1) @binding(1)
   var<storage, read_write> quadsb : array<quad>;
 
-@group(2) @binding(2)
+@group(1) @binding(2)
   var<storage, read_write> boxesb : array<box>;
 
-@group(2) @binding(3)
+@group(1) @binding(3)
   var<storage, read_write> trianglesb : array<triangle>;
 
-@group(2) @binding(4)
+@group(1) @binding(4)
   var<storage, read_write> meshb : array<mesh>;
+
+@group(1) @binding(5)
+  var<storage, read_write> cylindersb : array<cylinder>;
 
 struct ray {
   origin : vec3f,
@@ -73,6 +76,16 @@ struct mesh {
   show_bb : f32,
   start : f32,
   end : f32,
+};
+
+struct cylinder {
+  center : vec4f,
+  radius : f32,
+  height : f32,
+  padding : vec2f,
+  rotation: vec4f,
+  color : vec4f,
+  material : vec4f,
 };
 
 struct material_behaviour {
@@ -212,6 +225,21 @@ fn check_ray_collision(r: ray, max: f32) -> hit_record
       closest = candidate;
       closest.object_color = q.color;
       closest.object_material = q.material;
+    }
+  }
+
+  // Check cylinders
+  var cylindersCount = i32(uniforms[28]);
+  for (var ci = 0; ci < cylindersCount; ci = ci + 1)
+  {
+    var cyl = cylindersb[ci];
+    var candidate = hit_record(RAY_TMAX, vec3f(0.0), vec3f(0.0), vec4f(0.0), vec4f(0.0), false, false);
+    
+    if (hit_cylinder(r, cyl.center.xyz, cyl.radius, cyl.height, cyl.rotation.xyz, &candidate, max) && candidate.t < closest.t)
+    {
+      closest = candidate;
+      closest.object_color = cyl.color;
+      closest.object_material = cyl.material;
     }
   }
 

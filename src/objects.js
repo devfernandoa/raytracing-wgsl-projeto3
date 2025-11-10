@@ -1,20 +1,17 @@
-class Sphere
-{
+class Sphere {
     name = "Sphere";
     transform = [0.0, 0.0, 0.0, 0.0];
     color = [0.0, 0.0, 0.0, 0.0];
     material = [0.0, 0.0, 0.0, 0.0];
 
-    constructor(center, color, radius, material)
-    {
+    constructor(center, color, radius, material) {
         this.transform = [center[0], center[1], center[2], radius];
         this.color = [color[0], color[1], color[2], 1.0];
         this.material = material;
     }
 }
 
-class Quad
-{
+class Quad {
     name = "Quad";
     Q = [0.0, 0.0, 0.0, 0.0];
     U = [0.0, 0.0, 0.0, 0.0];
@@ -22,8 +19,7 @@ class Quad
     color = [0.0, 0.0, 0.0, 0.0];
     material = [0.0, 0.0, 0.0, 0.0];
 
-    constructor(Q, U, V, color, material)
-    {
+    constructor(Q, U, V, color, material) {
         this.Q = Q;
         this.U = U;
         this.V = V;
@@ -32,8 +28,7 @@ class Quad
     }
 }
 
-class Box
-{
+class Box {
     name = "Box";
     center = [0.0, 0.0, 0.0, 0.0];
     radius = [0.0, 0.0, 0.0, 0.0];
@@ -41,8 +36,7 @@ class Box
     color = [0.0, 0.0, 0.0, 0.0];
     material = [0.0, 0.0, 0.0, 0.0];
 
-    constructor(center, color, rotation, radius, material)
-    {
+    constructor(center, color, rotation, radius, material) {
         this.center = [center[0], center[1], center[2], 0.0];
         this.radius = [radius[0], radius[1], radius[2], 0.0];
         this.rotation = [rotation[0], rotation[1], rotation[2], 0.0];
@@ -51,23 +45,20 @@ class Box
     }
 }
 
-class Triangle
-{
+class Triangle {
     name = "Triangle";
     A = [0.0, 0.0, 0.0, 0.0];
     B = [0.0, 0.0, 0.0, 0.0];
     C = [0.0, 0.0, 0.0, 0.0];
 
-    constructor(A, B, C)
-    {
+    constructor(A, B, C) {
         this.A = A;
         this.B = B;
         this.C = C;
     }
 }
 
-class Mesh
-{
+class Mesh {
     name = "Mesh";
     transform = [0.0, 0.0, 0.0, 0.0];
     scale = [0.0, 0.0, 0.0, 0.0];
@@ -80,8 +71,7 @@ class Mesh
     start = 0;
     end = 0;
 
-    constructor(transform, scale, rotation, color, material, showBB, start, end)
-    {
+    constructor(transform, scale, rotation, color, material, showBB, start, end) {
         this.transform = [transform[0], transform[1], transform[2], 0.0];
         this.scale = [scale[0], scale[1], scale[2], 0.0];
         this.rotation = [rotation[0], rotation[1], rotation[2], 0.0];
@@ -92,11 +82,32 @@ class Mesh
         this.end = end;
     }
 
-    setBoundingBox(min, max)
-    {
+    setBoundingBox(min, max) {
         this.min = [min[0], min[1], min[2], 0.0];
         this.max = [max[0], max[1], max[2], 0.0];
     }
 }
 
-export { Sphere, Quad, Box, Triangle, Mesh };
+class Cylinder {
+    name = "Cylinder";
+    center = [0.0, 0.0, 0.0, 0.0];
+    radius = 0.0;
+    height = 0.0;
+    padding = [0.0, 0.0];
+    rotation = [0.0, 0.0, 0.0, 0.0];
+    color = [0.0, 0.0, 0.0, 0.0];
+    material = [0.0, 0.0, 0.0, 0.0];
+
+    constructor(center, color, rotation, radius, height, material) {
+        this.center = [center[0], center[1], center[2], 0.0];
+        this.radius = radius;
+        this.height = height;
+        this.padding = [0.0, 0.0];
+        this.rotation = [rotation[0], rotation[1], rotation[2], 0.0];
+        this.color = [color[0], color[1], color[2], 1.0];
+        this.material = material;
+    }
+}
+
+
+export { Sphere, Quad, Box, Triangle, Mesh, Cylinder };

@@ -108,6 +108,158 @@ fn hit_quad(r: ray, Q: vec4f, u: vec4f, v: vec4f, record: ptr<function, hit_reco
     return true;
 }
 
+fn hit_cylinder(r: ray, center: vec3f, radius: f32, height: f32, rotation: vec3f, record: ptr<function, hit_record>, t_max: f32) -> bool
+{
+    // Transform ray to cylinder's local space
+    var quat = quaternion_from_euler(rotation);
+    var quat_inv = q_inverse(quat);
+    
+    var local_origin = rotate_vector(r.origin - center, quat_inv);
+    var local_direction = normalize(rotate_vector(r.direction, quat_inv));
+    
+    // Cylinder is aligned with Y axis in local space
+    // Test intersection with infinite cylinder first
+    var a = local_direction.x * local_direction.x + local_direction.z * local_direction.z;
+    var b = 2.0 * (local_origin.x * local_direction.x + local_origin.z * local_direction.z);
+    var c = local_origin.x * local_origin.x + local_origin.z * local_origin.z - radius * radius;
+    
+    var discriminant = b * b - 4.0 * a * c;
+    
+    if (discriminant < 0.0 || a < 0.0001)
+    {
+        return false;
+    }
+    
+    var sqrt_disc = sqrt(discriminant);
+    var t = (-b - sqrt_disc) / (2.0 * a);
+    
+    // Check if first intersection is valid
+    if (t < RAY_TMIN || t > t_max)
+    {
+        t = (-b + sqrt_disc) / (2.0 * a);
+        if (t < RAY_TMIN || t > t_max)
+        {
+            return false;
+        }
+    }
+    
+    // Calculate hit point in local space
+    var local_p = local_origin + t * local_direction;
+    
+    // Check if hit is within cylinder height
+    var half_height = height * 0.5;
+    
+    // Check intersection with caps first
+    var hit_cap = false;
+    var cap_t = t_max;
+    var cap_normal = vec3f(0.0);
+    
+    // Bottom cap (y = -half_height)
+    if (abs(local_direction.y) > 0.0001)
+    {
+        var t_bottom = (-half_height - local_origin.y) / local_direction.y;
+        if (t_bottom > RAY_TMIN && t_bottom < t_max)
+        {
+            var p_bottom = local_origin + t_bottom * local_direction;
+            var dist_from_axis = sqrt(p_bottom.x * p_bottom.x + p_bottom.z * p_bottom.z);
+            
+            if (dist_from_axis <= radius)
+            {
+                hit_cap = true;
+                cap_t = t_bottom;
+                cap_normal = vec3f(0.0, -1.0, 0.0);
+            }
+        }
+        
+        // Top cap (y = half_height)
+        var t_top = (half_height - local_origin.y) / local_direction.y;
+        if (t_top > RAY_TMIN && t_top < t_max)
+        {
+            var p_top = local_origin + t_top * local_direction;
+            var dist_from_axis = sqrt(p_top.x * p_top.x + p_top.z * p_top.z);
+            
+            if (dist_from_axis <= radius && t_top < cap_t)
+            {
+                hit_cap = true;
+                cap_t = t_top;
+                cap_normal = vec3f(0.0, 1.0, 0.0);
+            }
+        }
+    }
+    
+    // Check side intersection
+    var hit_side = false;
+    var side_t = t_max;
+    var side_normal = vec3f(0.0);
+    
+    if (local_p.y >= -half_height && local_p.y <= half_height)
+    {
+        hit_side = true;
+        side_t = t;
+        side_normal = normalize(vec3f(local_p.x, 0.0, local_p.z));
+    }
+    else
+    {
+        // Try the other intersection
+        t = (-b + sqrt_disc) / (2.0 * a);
+        if (t > RAY_TMIN && t < t_max)
+        {
+            local_p = local_origin + t * local_direction;
+            if (local_p.y >= -half_height && local_p.y <= half_height)
+            {
+                hit_side = true;
+                side_t = t;
+                side_normal = normalize(vec3f(local_p.x, 0.0, local_p.z));
+            }
+        }
+    }
+    
+    // Choose closest hit
+    var final_t = t_max;
+    var local_normal = vec3f(0.0);
+    
+    if (hit_side && side_t < final_t)
+    {
+        final_t = side_t;
+        local_normal = side_normal;
+        local_p = local_origin + final_t * local_direction;
+    }
+    
+    if (hit_cap && cap_t < final_t)
+    {
+        final_t = cap_t;
+        local_normal = cap_normal;
+        local_p = local_origin + final_t * local_direction;
+    }
+    
+    if (final_t >= t_max)
+    {
+        return false;
+    }
+    
+    // Transform back to world space
+    var world_normal = normalize(rotate_vector(local_normal, quat));
+    var world_p = rotate_vector(local_p, quat) + center;
+    
+    record.t = final_t;
+    record.p = world_p;
+    record.hit_anything = true;
+    
+    var front_face = dot(r.direction, world_normal) < 0.0;
+    record.frontface = front_face;
+    
+    if (front_face)
+    {
+        record.normal = world_normal;
+    }
+    else
+    {
+        record.normal = -world_normal;
+    }
+    
+    return true;
+}
+
 fn hit_triangle(r: ray, v0: vec3f, v1: vec3f, v2: vec3f, record: ptr<function, hit_record>, max: f32)
 {
   var v1v0 = v1 - v0;
